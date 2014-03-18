@@ -1,6 +1,5 @@
 'use strict';
 
-var assert  = require('assert');
 var Syntax  = require('esprima-fb').Syntax;
 var utils   = require('jstransform/src/utils');
 
