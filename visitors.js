@@ -20,8 +20,8 @@ function writeDestructured(what, traverse, path, state) {
 function destructure(pattern, what, traverse, path, state) {
   utils.catchupNewlines(pattern.range[1], state);
 
-  // a special case with an object pattern which has single property, so we can
-  // reference it derectly
+  // check if we have an object pattern with just a single element, then we can
+  // save one extra variable declaration
   if (pattern.type === Syntax.ObjectPattern &&
       pattern.properties.length === 1) {
 
@@ -35,13 +35,10 @@ function destructure(pattern, what, traverse, path, state) {
       utils.append('.' + prop.key.name, state);
     }
 
-    return false;
-  }
-
-  // a special case with an object pattern which has single property, so we can
-  // reference it derectly
-  if (pattern.type === Syntax.ArrayPattern &&
-      pattern.elements.length === 1) {
+  // check if we have an array pattern with just a single element, then we can
+  // save one extra variable declaration
+  } else if (pattern.type === Syntax.ArrayPattern &&
+             pattern.elements.length === 1) {
 
     var elem = pattern.elements[0];
 
@@ -57,56 +54,61 @@ function destructure(pattern, what, traverse, path, state) {
       utils.append('[0]', state);
     }
 
-    return false;
-  }
-
-  var id;
-
-  if (what.type === Syntax.Identifier) {
-    id = what.name;
-  } else if (isString(what)) {
-    id = what;
-  } else {
-    id = genID('var');
-    utils.append(id + ' = ', state);
-    writeDestructured(what, traverse, path, state);
-
-    utils.append(', ', state);
-  }
-
-  if (pattern.type === Syntax.ObjectPattern) {
-
-    pattern.properties.forEach(function(prop, idx) {
-      var comma = (idx !== pattern.properties.length - 1) ? ', ' : '';
-
-      if (isPattern(prop.value)) {
-        destructure(prop.value, id + '.' + prop.key.name, traverse, path, state);
-      } else {
-        utils.append(prop.value.name + ' = ' + id + '.' + prop.key.name, state);
-        utils.append(comma, state);
-      }
-    });
-
   } else {
 
-    pattern.elements.forEach(function(elem, idx) {
-      if (elem === null) {
-        return;
-      }
+    var id;
 
-      var comma = (idx !== pattern.elements.length - 1) ? ', ' : '';
+    // if destructured is an identifier (or a string) we use its "value"
+    // directly, otherwise we cache it in variable declaration to prevent extra
+    // "effectful" evaluations
+    if (what.type === Syntax.Identifier) {
+      id = what.name;
+    } else if (isString(what)) {
+      id = what;
+    } else {
+      id = genID('var');
+      utils.append(id + ' = ', state);
+      writeDestructured(what, traverse, path, state);
 
-      if (isPattern(elem)) {
-        destructure(elem, id + '[' + idx + ']', traverse, path, state);
-      } else if (elem.type === Syntax.SpreadElement) {
-        utils.append(elem.argument.name + ' = ' + id, state);
-        utils.append('.slice(' + idx + ')', state);
-        utils.append(comma, state);
-      } else {
-        utils.append(elem.name + ' = ' + id + '[' + idx + ']', state);
-        utils.append(comma, state);
-      }
-    });
+      utils.append(', ', state);
+    }
+
+    if (pattern.type === Syntax.ObjectPattern) {
+
+      pattern.properties.forEach(function(prop, idx) {
+        var comma = (idx !== pattern.properties.length - 1) ? ', ' : '';
+
+        if (isPattern(prop.value)) {
+          destructure(prop.value, id + '.' + prop.key.name, traverse, path, state);
+        } else {
+          utils.append(prop.value.name + ' = ' + id + '.' + prop.key.name, state);
+          utils.append(comma, state);
+        }
+      });
+
+    } else {
+
+      pattern.elements.forEach(function(elem, idx) {
+        // null means skip
+        if (elem === null) {
+          return;
+        }
+
+        var comma = (idx !== pattern.elements.length - 1) ? ', ' : '';
+
+        if (isPattern(elem)) {
+          destructure(elem, id + '[' + idx + ']', traverse, path, state);
+        } else if (elem.type === Syntax.SpreadElement) {
+          utils.append(elem.argument.name + ' = ' + id, state);
+          utils.append('.slice(' + idx + ')', state);
+          utils.append(comma, state);
+        } else {
+          utils.append(elem.name + ' = ' + id + '[' + idx + ']', state);
+          utils.append(comma, state);
+        }
+      });
+
+    }
 
   }
 }
