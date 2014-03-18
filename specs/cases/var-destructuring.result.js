@@ -70,3 +70,19 @@ var$4 = {
   x: 11,
   y: 12
 }, x = var$4.x, y = var$4.y;
+
+// skip values in array pattern
+
+var x = arr[0];
+
+var x = arr[1];
+
+var x = arr[0], y = arr[2];
+
+// rest in array pattern
+
+var y = arr.slice(0);
+
+var x = arr[0], y = arr.slice(1);
+
+var x = arr[0], y = arr.slice(2);

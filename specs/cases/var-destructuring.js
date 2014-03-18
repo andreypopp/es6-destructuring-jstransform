@@ -70,3 +70,19 @@ var {
   x: 11,
   y: 12
 };
+
+// skip values in array pattern
+
+var [x,] = arr;
+
+var [,x,] = arr;
+
+var [x,,y] = arr;
+
+// rest in array pattern
+
+var [...y] = arr;
+
+var [x, ...y] = arr;
+
+var [x,, ...y] = arr;

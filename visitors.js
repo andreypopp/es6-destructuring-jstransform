@@ -48,6 +48,10 @@ function destructure(pattern, what, traverse, path, state) {
 
     if (isPattern(elem)) {
       destructure(elem, [what, '[0]'], traverse, path, state);
+    } else if (elem.type === Syntax.SpreadElement) {
+      utils.append(elem.argument.name + ' = ', state);
+      writeDestructured(what, traverse, path, state);
+      utils.append('.slice(0)', state);
     } else {
       utils.append(elem.name + ' = ', state);
       writeDestructured(what, traverse, path, state);
@@ -75,6 +79,7 @@ function destructure(pattern, what, traverse, path, state) {
 
     pattern.properties.forEach(function(prop, idx) {
       var comma = (idx !== pattern.properties.length - 1) ? ', ' : '';
+
       if (isPattern(prop.value)) {
         destructure(prop.value, id + '.' + prop.key.name, traverse, path, state);
       } else {
@@ -86,9 +91,18 @@ function destructure(pattern, what, traverse, path, state) {
   } else {
 
     pattern.elements.forEach(function(elem, idx) {
+      if (elem === null) {
+        return;
+      }
+
       var comma = (idx !== pattern.elements.length - 1) ? ', ' : '';
+
       if (isPattern(elem)) {
         destructure(elem, id + '[' + idx + ']', traverse, path, state);
+      } else if (elem.type === Syntax.SpreadElement) {
+        utils.append(elem.argument.name + ' = ' + id, state);
+        utils.append('.slice(' + idx + ')', state);
+        utils.append(comma, state);
       } else {
         utils.append(elem.name + ' = ' + id + '[' + idx + ']', state);
         utils.append(comma, state);
