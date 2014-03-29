@@ -86,3 +86,7 @@ var y = arr.slice(0);
 var x = arr[0], y = arr.slice(1);
 
 var x = arr[0], y = arr.slice(2);
+
+// with functions
+
+var x = (function(arg$5) {var x = arg$5.x; return x })(12).x;

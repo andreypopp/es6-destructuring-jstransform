@@ -86,3 +86,7 @@ var [...y] = arr;
 var [x, ...y] = arr;
 
 var [x,, ...y] = arr;
+
+// with functions
+
+var {x} = (function({x}) { return x })(12);
