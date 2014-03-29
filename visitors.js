@@ -3,113 +3,104 @@
 var Syntax  = require('esprima-fb').Syntax;
 var utils   = require('jstransform/src/utils');
 
-function writeDestructured(what, traverse, path, state) {
-  if (isString(what)) {
-    utils.append(what, state);
-  } else if (Array.isArray(what)) {
-    what.forEach(function(w) {
-      writeDestructured(w, traverse, path, state);
+/**
+ * Render expression
+ *
+ * @param {Node|String|Array} expr
+ */
+function renderGeneric(expr, traverse, path, state) {
+  if (isString(expr)) {
+    utils.append(expr, state);
+  } else if (Array.isArray(expr)) {
+    expr.forEach(function(w) {
+      renderGeneric(w, traverse, path, state);
     });
   } else {
-    utils.move(what.range[0], state);
-    traverse(what, path, state);
-    utils.catchup(what.range[1], state);
+    utils.move(expr.range[0], state);
+    traverse(expr, path, state);
+    utils.catchup(expr.range[1], state);
   }
+}
+
+/**
+ * Render expression into a variable declaration and return its id.
+ *
+ * If we destructure is an identifier (or a string) we use its "value"
+ * directly, otherwise we cache it in variable declaration to prevent extra
+ * "effectful" evaluations.
+ *
+ * @param {Node|String|Array} expr
+ */
+function renderMemoized(expr, traverse, path, state) {
+  var evaluated;
+  if (expr.type === Syntax.Identifier) {
+    evaluated = expr.name;
+  } else if (isString(expr)) {
+    evaluated = expr;
+  } else {
+    evaluated = genID('var');
+    utils.append(evaluated + ' = ', state);
+    renderGeneric(expr, traverse, path, state);
+
+    utils.append(', ', state);
+  }
+  return evaluated;
+}
+
+/**
+ * Render destructuration.
+ */
+function renderDestructuration(name, what, accessor, traverse, path, state) {
+  utils.append(name + ' = ', state);
+  renderGeneric([what, accessor], traverse, path, state);
 }
 
 function destructure(pattern, what, traverse, path, state) {
   utils.catchupNewlines(pattern.range[1], state);
 
-  // check if we have an object pattern with just a single element, then we can
-  // save one extra variable declaration
-  if (pattern.type === Syntax.ObjectPattern &&
-      pattern.properties.length === 1) {
+  var id;
 
-    var prop = pattern.properties[0];
+  if (pattern.type === Syntax.ObjectPattern && pattern.properties.length === 1) {
+    id = what;
+  } else if (pattern.type === Syntax.ArrayPattern && pattern.elements.length === 1) {
+    id = what;
+  } else {
+    id = renderMemoized(what, traverse, path, state);
+  }
 
-    if (isPattern(prop.value)) {
-      destructure(prop.value, [what, '.', prop.key.name], traverse, path, state);
-    } else {
-      utils.append(prop.value.name + ' = ', state);
-      writeDestructured(what, traverse, path, state);
-      utils.append('.' + prop.key.name, state);
-    }
+  if (pattern.type === Syntax.ObjectPattern) {
 
-  // check if we have an array pattern with just a single element, then we can
-  // save one extra variable declaration
-  } else if (pattern.type === Syntax.ArrayPattern &&
-             pattern.elements.length === 1) {
+    pattern.properties.forEach(function(prop, idx) {
+      var comma = (idx !== pattern.properties.length - 1) ? ', ' : '';
 
-    var elem = pattern.elements[0];
-
-    if (isPattern(elem)) {
-      destructure(elem, [what, '[0]'], traverse, path, state);
-    } else if (elem.type === Syntax.SpreadElement) {
-      utils.append(elem.argument.name + ' = ', state);
-      writeDestructured(what, traverse, path, state);
-      utils.append('.slice(0)', state);
-    } else {
-      utils.append(elem.name + ' = ', state);
-      writeDestructured(what, traverse, path, state);
-      utils.append('[0]', state);
-    }
+      if (isPattern(prop.value)) {
+        destructure(prop.value, [id, '.', prop.key.name], traverse, path, state);
+      } else {
+        renderDestructuration(prop.value.name, id, '.' + prop.key.name, traverse, path, state);
+        utils.append(comma, state);
+      }
+    });
 
   } else {
 
-    var id;
+    pattern.elements.forEach(function(elem, idx) {
+      // null means skip
+      if (elem === null) {
+        return;
+      }
 
-    // if destructured is an identifier (or a string) we use its "value"
-    // directly, otherwise we cache it in variable declaration to prevent extra
-    // "effectful" evaluations
-    if (what.type === Syntax.Identifier) {
-      id = what.name;
-    } else if (isString(what)) {
-      id = what;
-    } else {
-      id = genID('var');
-      utils.append(id + ' = ', state);
-      writeDestructured(what, traverse, path, state);
+      var comma = (idx !== pattern.elements.length - 1) ? ', ' : '';
 
-      utils.append(', ', state);
-    }
-
-    if (pattern.type === Syntax.ObjectPattern) {
-
-      pattern.properties.forEach(function(prop, idx) {
-        var comma = (idx !== pattern.properties.length - 1) ? ', ' : '';
-
-        if (isPattern(prop.value)) {
-          destructure(prop.value, id + '.' + prop.key.name, traverse, path, state);
-        } else {
-          utils.append(prop.value.name + ' = ' + id + '.' + prop.key.name, state);
-          utils.append(comma, state);
-        }
-      });
-
-    } else {
-
-      pattern.elements.forEach(function(elem, idx) {
-        // null means skip
-        if (elem === null) {
-          return;
-        }
-
-        var comma = (idx !== pattern.elements.length - 1) ? ', ' : '';
-
-        if (isPattern(elem)) {
-          destructure(elem, id + '[' + idx + ']', traverse, path, state);
-        } else if (elem.type === Syntax.SpreadElement) {
-          utils.append(elem.argument.name + ' = ' + id, state);
-          utils.append('.slice(' + idx + ')', state);
-          utils.append(comma, state);
-        } else {
-          utils.append(elem.name + ' = ' + id + '[' + idx + ']', state);
-          utils.append(comma, state);
-        }
-      });
-
-    }
-
+      if (isPattern(elem)) {
+        destructure(elem, [id, '[' + idx + ']'], traverse, path, state);
+      } else if (elem.type === Syntax.SpreadElement) {
+        renderDestructuration(elem.argument.name, id, '.slice(' + idx + ')', traverse, path, state);
+        utils.append(comma, state);
+      } else {
+        renderDestructuration(elem.name, id, '[' + idx + ']', traverse, path, state);
+        utils.append(comma, state);
+      }
+    });
   }
 }
 
