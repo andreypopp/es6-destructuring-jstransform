@@ -7,13 +7,16 @@ var utils   = require('jstransform/src/utils');
  * Render expression
  *
  * @param {Node|String|Array} expr
+ * @param {Function} traverse
+ * @param {Object} path
+ * @param {Object} state
  */
-function renderGeneric(expr, traverse, path, state) {
+function render(expr, traverse, path, state) {
   if (isString(expr)) {
     utils.append(expr, state);
   } else if (Array.isArray(expr)) {
     expr.forEach(function(w) {
-      renderGeneric(w, traverse, path, state);
+      render(w, traverse, path, state);
     });
   } else {
     utils.move(expr.range[0], state);
@@ -30,8 +33,11 @@ function renderGeneric(expr, traverse, path, state) {
  * "effectful" evaluations.
  *
  * @param {Node|String|Array} expr
+ * @param {Function} traverse
+ * @param {Object} path
+ * @param {Object} state
  */
-function renderMemoized(expr, traverse, path, state) {
+function renderExpressionMemoized(expr, traverse, path, state) {
   var evaluated;
   if (expr.type === Syntax.Identifier) {
     evaluated = expr.name;
@@ -40,32 +46,24 @@ function renderMemoized(expr, traverse, path, state) {
   } else {
     evaluated = genID('var');
     utils.append(evaluated + ' = ', state);
-    renderGeneric(expr, traverse, path, state);
+    render(expr, traverse, path, state);
 
     utils.append(', ', state);
   }
   return evaluated;
 }
 
-/**
- * Render destructuration.
- */
-function renderDestructuration(name, what, accessor, traverse, path, state) {
-  utils.append(name + ' = ', state);
-  renderGeneric([what, accessor], traverse, path, state);
-}
-
-function destructure(pattern, what, traverse, path, state) {
+function destructure(pattern, expr, traverse, path, state) {
   utils.catchupNewlines(pattern.range[1], state);
 
   var id;
 
   if (pattern.type === Syntax.ObjectPattern && pattern.properties.length === 1) {
-    id = what;
+    id = expr;
   } else if (pattern.type === Syntax.ArrayPattern && pattern.elements.length === 1) {
-    id = what;
+    id = expr;
   } else {
-    id = renderMemoized(what, traverse, path, state);
+    id = renderExpressionMemoized(expr, traverse, path, state);
   }
 
   if (pattern.type === Syntax.ObjectPattern) {
@@ -76,7 +74,8 @@ function destructure(pattern, what, traverse, path, state) {
       if (isPattern(prop.value)) {
         destructure(prop.value, [id, '.', prop.key.name], traverse, path, state);
       } else {
-        renderDestructuration(prop.value.name, id, '.' + prop.key.name, traverse, path, state);
+        utils.append(prop.value.name + ' = ', state);
+        render([id, '.' + prop.key.name], traverse, path, state);
         utils.append(comma, state);
       }
     });
@@ -94,10 +93,12 @@ function destructure(pattern, what, traverse, path, state) {
       if (isPattern(elem)) {
         destructure(elem, [id, '[' + idx + ']'], traverse, path, state);
       } else if (elem.type === Syntax.SpreadElement) {
-        renderDestructuration(elem.argument.name, id, '.slice(' + idx + ')', traverse, path, state);
+        utils.append(elem.argument.name + ' = ', state);
+        render([id, '.slice(' + idx + ')'], traverse, path, state);
         utils.append(comma, state);
       } else {
-        renderDestructuration(elem.name, id, '[' + idx + ']', traverse, path, state);
+        utils.append(elem.name + ' = ', state);
+        render([id, '[' + idx + ']'], traverse, path, state);
         utils.append(comma, state);
       }
     });
@@ -139,7 +140,7 @@ function visitFunction(traverse, node, path, state) {
         var id = genID('arg');
         utils.append(id, state);
         utils.move(param.range[1], state);
-        patterns.push({pattern: param, what: id});
+        patterns.push({pattern: param, expr: id});
       } else {
         traverse(param, path, state);
         utils.catchup(param.range[1], state);
@@ -152,7 +153,7 @@ function visitFunction(traverse, node, path, state) {
     utils.catchup(node.body.range[0] + 1, state);
     utils.append('var ', state);
     patterns.forEach(function(pattern, idx) {
-      destructure(pattern.pattern, pattern.what, traverse, path, state);
+      destructure(pattern.pattern, pattern.expr, traverse, path, state);
       if (idx !== patterns.length - 1) {
         utils.append(', ', state);
       }
