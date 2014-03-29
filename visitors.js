@@ -4,9 +4,12 @@ var Syntax  = require('esprima-fb').Syntax;
 var utils   = require('jstransform/src/utils');
 
 /**
- * Render expression
+ * Render an expression
  *
- * @param {Node|String|Array} expr
+ * This is a helper which can render AST nodes, sting values or arrays which can
+ * contain both of the types.
+ *
+ * @param {Node|String|Array} expr Expression to render
  * @param {Function} traverse
  * @param {Object} path
  * @param {Object} state
@@ -32,7 +35,7 @@ function render(expr, traverse, path, state) {
  * directly, otherwise we cache it in variable declaration to prevent extra
  * "effectful" evaluations.
  *
- * @param {Node|String|Array} expr
+ * @param {Node|String|Array} expr Expression to render
  * @param {Function} traverse
  * @param {Object} path
  * @param {Object} state
@@ -53,7 +56,16 @@ function renderExpressionMemoized(expr, traverse, path, state) {
   return evaluated;
 }
 
-function destructure(pattern, expr, traverse, path, state) {
+/**
+ * Render destructuration of the `expr` using provided `pattern`.
+ *
+ * @param {Node} pattern Pattern to use for destructuration
+ * @param {Node|String|Array} expr Expression to destructure
+ * @param {Function} traverse
+ * @param {Object} path
+ * @param {Object} state
+ */
+function renderDesructuration(pattern, expr, traverse, path, state) {
   utils.catchupNewlines(pattern.range[1], state);
 
   var id;
@@ -72,7 +84,7 @@ function destructure(pattern, expr, traverse, path, state) {
       var comma = (idx !== pattern.properties.length - 1) ? ', ' : '';
 
       if (isPattern(prop.value)) {
-        destructure(prop.value, [id, '.', prop.key.name], traverse, path, state);
+        renderDesructuration(prop.value, [id, '.', prop.key.name], traverse, path, state);
       } else {
         utils.append(prop.value.name + ' = ', state);
         render([id, '.' + prop.key.name], traverse, path, state);
@@ -91,7 +103,7 @@ function destructure(pattern, expr, traverse, path, state) {
       var comma = (idx !== pattern.elements.length - 1) ? ', ' : '';
 
       if (isPattern(elem)) {
-        destructure(elem, [id, '[' + idx + ']'], traverse, path, state);
+        renderDesructuration(elem, [id, '[' + idx + ']'], traverse, path, state);
       } else if (elem.type === Syntax.SpreadElement) {
         utils.append(elem.argument.name + ' = ', state);
         render([id, '.slice(' + idx + ')'], traverse, path, state);
@@ -107,10 +119,11 @@ function destructure(pattern, expr, traverse, path, state) {
 
 function visitVariableDeclaration(traverse, node, path, state) {
   utils.catchup(node.range[0], state);
+
   node.declarations.forEach(function(decl, idx) {
     utils.catchup(decl.range[0], state);
     if (isPattern(decl.id)) {
-      destructure(decl.id, decl.init, traverse, path, state);
+      renderDesructuration(decl.id, decl.init, traverse, path, state);
       utils.move(decl.range[1], state);
     } else {
       traverse(decl, path, state);
@@ -131,9 +144,11 @@ function visitFunction(traverse, node, path, state) {
   if (node.params.filter(isPattern).length > 0) {
     var patterns = [];
 
-    // go through params and replace patterns with synthesized args
     utils.catchup(node.params[0].range[0], state);
 
+    // loop over function parameters and replace all destructuration patterns
+    // with synthesized parameters, collect all found patterns to process them
+    // later
     node.params.forEach(function(param) {
       utils.catchup(param.range[0], state);
       if (isPattern(param)) {
@@ -153,7 +168,7 @@ function visitFunction(traverse, node, path, state) {
     utils.catchup(node.body.range[0] + 1, state);
     utils.append('var ', state);
     patterns.forEach(function(pattern, idx) {
-      destructure(pattern.pattern, pattern.expr, traverse, path, state);
+      renderDesructuration(pattern.pattern, pattern.expr, traverse, path, state);
       if (idx !== patterns.length - 1) {
         utils.append(', ', state);
       }
