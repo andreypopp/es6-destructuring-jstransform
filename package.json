@@ -1,6 +1,6 @@
 {
   "name": "es6-destructuring-jstransform",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "jstranform for es6 destructuring syntax",
   "main": "index.js",
   "dependencies": {
