@@ -89,4 +89,6 @@ var [x,, ...y] = arr;
 
 // with functions
 
-var {x} = (function({x}) { return x })(12);
+var {x} = (function(
+      {x},
+      {y}) { return x + y; })(12);
