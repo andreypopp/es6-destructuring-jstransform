@@ -32,3 +32,9 @@ function x(arg$9) {var y = arg$9.y;
 var x = function(arg$10) {var y = arg$10.y;
   var z = y.z;
 }.x;
+
+function outer(arg$11) {var x = arg$11.x;
+  return function inner(arg$12) {var y = arg$12.y;
+    return x + y;
+  }
+}

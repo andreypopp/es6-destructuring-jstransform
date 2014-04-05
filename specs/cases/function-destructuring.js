@@ -32,3 +32,9 @@ function x({y}) {
 var {x} = function({y}) {
   var {z} = y;
 };
+
+function outer({x}) {
+  return function inner({y}) {
+    return x + y;
+  }
+}
