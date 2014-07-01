@@ -1,5 +1,7 @@
 # es6-destructuring-jstransform
 
+**WARNING:** This package is deprecated, jstransform itself provides destructuring visitors.
+
 ES6 destructuring assignment and destructuring function arguments
 transformation.
 
